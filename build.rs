@@ -113,7 +113,7 @@ fn main() {
 
     if !v8_from_source {
       println!(
-        "Prebuilt static library download failed with deno/python/curl, falling back to V8_FROM_SOURCE."
+        "Prebuilt static library download failed with Deno/Python/curl, falling back to V8_FROM_SOURCE."
       );
     }
 
@@ -678,7 +678,7 @@ fn download_file(url: &str, filename: &Path) -> bool {
   // Try downloading with python. Python is a V8 build dependency,
   // so this saves us from adding a Rust HTTP client dependency.
   let status = match status {
-    deno_status @ Some(_) => deno_status,
+    Some(status) => Some(status),
     None => {
       println!("Trying with Python...");
       let python_status_result = Command::new(python())
@@ -694,7 +694,7 @@ fn download_file(url: &str, filename: &Path) -> bool {
       // Python is only a required dependency for `V8_FROM_SOURCE` builds.
       // If python is not available, try falling back to curl.
       match python_status_result {
-        python_status @ Some(_) => python_status,
+        Some(status) => Some(status),
         None => {
           println!("Python downloader failed, trying with curl.");
           Command::new("curl")
@@ -716,6 +716,9 @@ fn download_file(url: &str, filename: &Path) -> bool {
     if tmpfile.exists() {
       let _ = fs::remove_file(&tmpfile);
     }
+    eprintln!(
+      "Failed to download {url} using all available methods (Deno, Python, curl)."
+    );
     return false;
   }
   if !tmpfile.exists() {
