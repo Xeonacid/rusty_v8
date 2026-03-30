@@ -282,6 +282,7 @@ jobs:
             --foreign \
             --variant=minbase \
             --include=libc6,libgcc-s1,musl \
+            # Ubuntu 22.04 LTS (jammy).
             jammy /opt/riscv64-linux-runtime \
             http://ports.ubuntu.com/ubuntu-ports
 
