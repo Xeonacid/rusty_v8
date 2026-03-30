@@ -100,20 +100,19 @@ fn main() {
   let _lockfile = acquire_lock();
 
   // Build from source directly, or fall back when prebuilt download fails.
-  let v8_from_source = env_bool("V8_FROM_SOURCE");
-  if v8_from_source || {
+  if env_bool("V8_FROM_SOURCE") || {
     print_prebuilt_src_binding_path();
     !download_static_lib_binaries()
   } {
-    if is_asan && env::var_os("OPT_LEVEL").unwrap_or_default() == "0" {
-      panic!(
-        "v8 crate cannot be compiled with OPT_LEVEL=0 and ASAN.\nTry `[profile.dev.package.v8] opt-level = 1`.\nAborting before miscompilations cause issues."
+    if !env_bool("V8_FROM_SOURCE") {
+      println!(
+        "Prebuilt static library download failed with Deno/Python/curl, falling back to V8_FROM_SOURCE."
       );
     }
 
-    if !v8_from_source {
-      println!(
-        "Prebuilt static library download failed with Deno/Python/curl, falling back to V8_FROM_SOURCE."
+    if is_asan && env::var_os("OPT_LEVEL").unwrap_or_default() == "0" {
+      panic!(
+        "v8 crate cannot be compiled with OPT_LEVEL=0 and ASAN.\nTry `[profile.dev.package.v8] opt-level = 1`.\nAborting before miscompilations cause issues."
       );
     }
 
@@ -681,7 +680,7 @@ fn download_file(url: &str, filename: &Path) -> bool {
     Some(status) => Some(status),
     None => {
       println!("Trying with Python...");
-      let python_status_result = Command::new(python())
+      let python_status = Command::new(python())
         .arg("./tools/download_file.py")
         .arg("--url")
         .arg(url)
@@ -693,7 +692,7 @@ fn download_file(url: &str, filename: &Path) -> bool {
 
       // Python is only a required dependency for `V8_FROM_SOURCE` builds.
       // If python is not available, try falling back to curl.
-      match python_status_result {
+      match python_status {
         Some(status) => Some(status),
         None => {
           println!("Python downloader failed, trying with curl.");
