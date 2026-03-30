@@ -99,8 +99,17 @@ fn main() {
   // because we store everything in a parent directory of OUT_DIR.
   let _lockfile = acquire_lock();
 
-  // Build from source
-  if env_bool("V8_FROM_SOURCE") {
+  // Build from source directly, or fall back when prebuilt download fails.
+  if env_bool("V8_FROM_SOURCE") || {
+    print_prebuilt_src_binding_path();
+    !download_static_lib_binaries()
+  } {
+    if !env_bool("V8_FROM_SOURCE") {
+      println!(
+        "Prebuilt static library download failed with Deno/Python/curl, falling back to V8_FROM_SOURCE."
+      );
+    }
+
     if is_asan && env::var_os("OPT_LEVEL").unwrap_or_default() == "0" {
       panic!(
         "v8 crate cannot be compiled with OPT_LEVEL=0 and ASAN.\nTry `[profile.dev.package.v8] opt-level = 1`.\nAborting before miscompilations cause issues."
@@ -117,10 +126,6 @@ fn main() {
 
     return;
   }
-
-  print_prebuilt_src_binding_path();
-
-  download_static_lib_binaries();
 }
 
 fn acquire_lock() -> LockFile {
@@ -617,15 +622,15 @@ fn replace_non_alphanumeric(url: &str) -> String {
     .collect()
 }
 
-fn download_file(url: &str, filename: &Path) {
+fn download_file(url: &str, filename: &Path) -> bool {
   if !url.starts_with("http:") && !url.starts_with("https:") {
     copy_archive(url, filename);
-    return;
+    return true;
   }
 
   // Checksum (i.e: url) to avoid re-downloads
   match fs::read_to_string(static_checksum_path(filename)) {
-    Ok(c) if c == static_lib_url() => return,
+    Ok(c) if c == static_lib_url() => return true,
     _ => {}
   };
 
@@ -636,7 +641,7 @@ fn download_file(url: &str, filename: &Path) {
     println!("Looking for download in '{path:?}'");
     if path.exists() {
       copy_archive(&path.to_string_lossy(), filename);
-      return;
+      return true;
     }
   }
 
@@ -672,8 +677,8 @@ fn download_file(url: &str, filename: &Path) {
   // Try downloading with python. Python is a V8 build dependency,
   // so this saves us from adding a Rust HTTP client dependency.
   let status = match status {
-    Some(status) => status,
-    _ => {
+    Some(status) => Some(status),
+    None => {
       println!("Trying with Python...");
       let python_status = Command::new(python())
         .arg("./tools/download_file.py")
@@ -681,13 +686,15 @@ fn download_file(url: &str, filename: &Path) {
         .arg(url)
         .arg("--filename")
         .arg(&tmpfile)
-        .status();
+        .status()
+        .ok()
+        .filter(|s| s.success());
 
       // Python is only a required dependency for `V8_FROM_SOURCE` builds.
       // If python is not available, try falling back to curl.
       match python_status {
-        Ok(status) if status.success() => status,
-        _ => {
+        Some(status) => Some(status),
+        None => {
           println!("Python downloader failed, trying with curl.");
           Command::new("curl")
             .arg("-L")
@@ -697,15 +704,22 @@ fn download_file(url: &str, filename: &Path) {
             .arg(&tmpfile)
             .arg(url)
             .status()
-            .unwrap()
+            .ok()
+            .filter(|s| s.success())
         }
       }
     }
   };
 
-  // Assert DL was successful
-  assert!(status.success());
-  assert!(tmpfile.exists());
+  if status.is_none() {
+    if tmpfile.exists() {
+      let _ = fs::remove_file(&tmpfile);
+    }
+    return false;
+  }
+  if !tmpfile.exists() {
+    return false;
+  }
 
   // Write checksum (i.e url) & move file
   fs::write(static_checksum_path(filename), url).unwrap();
@@ -715,9 +729,10 @@ fn download_file(url: &str, filename: &Path) {
   assert!(filename.exists());
   assert!(static_checksum_path(filename).exists());
   assert!(!tmpfile.exists());
+  true
 }
 
-fn download_static_lib_binaries() {
+fn download_static_lib_binaries() -> bool {
   let url = static_lib_url();
   println!("static lib URL: {url}");
 
@@ -725,7 +740,7 @@ fn download_static_lib_binaries() {
   fs::create_dir_all(&dir).unwrap();
   println!("cargo:rustc-link-search={}", dir.display());
 
-  download_file(&url, &static_lib_path());
+  download_file(&url, &static_lib_path())
 }
 
 fn decompress_to_writer<R, W>(input: &mut R, output: &mut W) -> io::Result<()>
@@ -866,7 +881,9 @@ fn print_prebuilt_src_binding_path() {
   if let Ok(base) = env::var("RUSTY_V8_MIRROR") {
     let version = env::var("CARGO_PKG_VERSION").unwrap();
     let url = format!("{base}/v{version}/{name}");
-    download_file(&url, &src_binding_path);
+    if !download_file(&url, &src_binding_path) {
+      panic!("Failed to download prebuilt src binding from {url}");
+    }
   }
 
   println!(
