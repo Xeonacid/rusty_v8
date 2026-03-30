@@ -329,14 +329,11 @@ jobs:
                "aarch64-apple-darwin"      = "aarch64-apple-darwin"
                "x86_64-unknown-linux-gnu"  = "x86_64-unknown-linux-musl"
                "aarch64-unknown-linux-gnu" = "aarch64-unknown-linux-musl"
-               # Keep using the v0.14.0 riscv64 archive; unlike aarch64 it is not
-               # static, so riscv64 jobs provide a musl runtime before start.
-               "riscv64gc-unknown-linux-gnu" = "riscv64gc-unknown-linux-musl"
-               "x86_64-pc-windows-msvc"    = "x86_64-pc-windows-msvc"
-             }['${{ matrix.config.target }}']
-          if ('${{ matrix.config.target }}' -eq 'riscv64gc-unknown-linux-gnu') {
-            $env:QEMU_LD_PREFIX = "/opt/riscv64-linux-musl"
-          }
+               # Unlike aarch64, the riscv64 sccache binary is not static, so
+               # riscv64 jobs provide a musl runtime before start.
+                "riscv64gc-unknown-linux-gnu" = "riscv64gc-unknown-linux-musl"
+                "x86_64-pc-windows-msvc"    = "x86_64-pc-windows-msvc"
+              }['${{ matrix.config.target }}']
           $basename = "sccache-$version-$platform"
           $url = "https://github.com/mozilla/sccache/releases/download/$version/$basename.tar.gz"
           cd ~
