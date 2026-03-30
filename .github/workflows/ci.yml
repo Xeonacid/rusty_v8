@@ -277,14 +277,14 @@ jobs:
           # qemu-user supports only a single QEMU_LD_PREFIX value. Build one
           # riscv64 runtime root with glibc + libgcc-s1 + musl via debootstrap,
           # so it can run both cargo/nextest binaries and riscv64-musl sccache.
-          # Ubuntu 22.04 LTS (jammy).
+          # Debian trixie provides musl on riscv64.
           sudo debootstrap \
             --arch=riscv64 \
             --foreign \
             --variant=minbase \
             --include=libc6,libgcc-s1,musl \
-            jammy /opt/riscv64-linux-runtime \
-            http://ports.ubuntu.com/ubuntu-ports
+            trixie /opt/riscv64-linux-runtime \
+            https://deb.debian.org/debian
 
           echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/riscv64-linux-gnu-gcc-10" >> ${GITHUB_ENV}
           echo "QEMU_LD_PREFIX=/opt/riscv64-linux-runtime" >> ${GITHUB_ENV}
