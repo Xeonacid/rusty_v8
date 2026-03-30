@@ -277,12 +277,12 @@ jobs:
           # qemu-user supports only a single QEMU_LD_PREFIX value. Build one
           # riscv64 runtime root with glibc + libgcc-s1 + musl via debootstrap,
           # so it can run both cargo/nextest binaries and riscv64-musl sccache.
+          # Ubuntu 22.04 LTS (jammy).
           sudo debootstrap \
             --arch=riscv64 \
             --foreign \
             --variant=minbase \
             --include=libc6,libgcc-s1,musl \
-            # Ubuntu 22.04 LTS (jammy).
             jammy /opt/riscv64-linux-runtime \
             http://ports.ubuntu.com/ubuntu-ports
 
