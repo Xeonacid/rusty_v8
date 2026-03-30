@@ -268,32 +268,22 @@ jobs:
           sudo apt update
           sudo apt install -yq --no-install-suggests --no-install-recommends \
             binfmt-support g++-10-riscv64-linux-gnu \
-            gcc-10-riscv64-linux-gnu libc6-riscv64-cross qemu qemu-user \
-            qemu-user-binfmt
+            gcc-10-riscv64-linux-gnu libc6-riscv64-cross debootstrap qemu \
+            qemu-user qemu-user-binfmt
 
           sudo ln -s /usr/riscv64-linux-gnu/lib/ld-linux-riscv64-lp64d.so.1 \
                      /lib/ld-linux-riscv64-lp64d.so.1
 
-          # qemu-user supports only a single QEMU_LD_PREFIX value, so build
-          # one riscv64 runtime root that can run both:
-          # - glibc target binaries produced by cargo/nextest
-          # - riscv64-musl sccache binary
-          sudo mkdir -p /opt/riscv64-linux-runtime
-          sudo cp -a /usr/riscv64-linux-gnu/. /opt/riscv64-linux-runtime/
-          curl -fsSL -o /tmp/musl-riscv64.apk \
-            https://dl-cdn.alpinelinux.org/alpine/edge/main/riscv64/musl-1.2.6-r0.apk
-          # Checksum from Alpine package file musl-1.2.6-r0.apk (edge/main/riscv64).
-          # Update this value together with the pinned apk version in the URL.
-          echo "6324b57cdf75bee5d7ffdf36b5cfe927c63c36162431fc675ab18a1fc44f49d7  /tmp/musl-riscv64.apk" | sha256sum -c -
-          sudo tar -xzf /tmp/musl-riscv64.apk -C /opt/riscv64-linux-runtime
-          curl -fsSL -o /tmp/libgcc-riscv64.apk \
-            https://dl-cdn.alpinelinux.org/alpine/edge/main/riscv64/libgcc-15.2.0-r2.apk
-          # Checksum from Alpine package file libgcc-15.2.0-r2.apk (edge/main/riscv64).
-          # Update this value together with the pinned apk version in the URL.
-          echo "1dd096a2c61e9b810c6988a3ec9a5d39b694cf832d6a86c217d3a2dc6454ef2a  /tmp/libgcc-riscv64.apk" | sha256sum -c -
-          sudo tar -xzf /tmp/libgcc-riscv64.apk -C /opt/riscv64-linux-runtime
-          sudo cp /opt/riscv64-linux-runtime/usr/lib/libgcc_s.so.1 \
-            /opt/riscv64-linux-runtime/lib/libgcc_s.so.1
+          # qemu-user supports only a single QEMU_LD_PREFIX value. Build one
+          # riscv64 runtime root with glibc + libgcc-s1 + musl via debootstrap,
+          # so it can run both cargo/nextest binaries and riscv64-musl sccache.
+          sudo debootstrap \
+            --arch=riscv64 \
+            --foreign \
+            --variant=minbase \
+            --include=libc6,libgcc-s1,musl \
+            jammy /opt/riscv64-linux-runtime \
+            http://ports.ubuntu.com/ubuntu-ports
 
           echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/riscv64-linux-gnu-gcc-10" >> ${GITHUB_ENV}
           echo "QEMU_LD_PREFIX=/opt/riscv64-linux-runtime" >> ${GITHUB_ENV}
