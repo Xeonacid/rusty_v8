@@ -294,7 +294,8 @@ jobs:
             /opt/riscv64-linux-musl/lib/libgcc_s.so.1
 
           echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/riscv64-linux-gnu-gcc-10" >> ${GITHUB_ENV}
-          echo "QEMU_LD_PREFIX=/opt/riscv64-linux-musl" >> ${GITHUB_ENV}
+          # Default to riscv64 glibc runtime for cargo/nextest target binaries.
+          echo "QEMU_LD_PREFIX=/usr/riscv64-linux-gnu" >> ${GITHUB_ENV}
 
       - name: Write git_submodule_status.txt
         run: git submodule status --recursive > git_submodule_status.txt
@@ -334,6 +335,10 @@ jobs:
                 "riscv64gc-unknown-linux-gnu" = "riscv64gc-unknown-linux-musl"
                 "x86_64-pc-windows-msvc"    = "x86_64-pc-windows-msvc"
               }['${{ matrix.config.target }}']
+          if ('${{ matrix.config.target }}' -eq 'riscv64gc-unknown-linux-gnu') {
+            # Use musl runtime only while launching riscv64-musl sccache.
+            $env:QEMU_LD_PREFIX = "/opt/riscv64-linux-musl"
+          }
           $basename = "sccache-$version-$platform"
           $url = "https://github.com/mozilla/sccache/releases/download/$version/$basename.tar.gz"
           cd ~
