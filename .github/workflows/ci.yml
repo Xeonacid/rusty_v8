@@ -27,54 +27,6 @@ jobs:
         !contains(github.event.pull_request.labels.*.name, 'no-fail-fast') }}
       matrix:
         config:
-          - os: macos-15-large
-            target: x86_64-apple-darwin
-            variant: debug
-            v8_enable_pointer_compression: false
-            cargo: cargo
-
-          - os: macos-15-large
-            target: x86_64-apple-darwin
-            variant: release
-            v8_enable_pointer_compression: false
-            cargo: cargo
-
-          - os: macos-15-large
-            target: x86_64-apple-darwin
-            variant: debug
-            v8_enable_pointer_compression: true
-            cargo: cargo
-
-          - os: macos-15-large
-            target: x86_64-apple-darwin
-            variant: release
-            v8_enable_pointer_compression: true
-            cargo: cargo
-
-          - os: macos-15
-            target: aarch64-apple-darwin
-            variant: debug
-            v8_enable_pointer_compression: false
-            cargo: cargo
-
-          - os: macos-15
-            target: aarch64-apple-darwin
-            variant: release
-            v8_enable_pointer_compression: false
-            cargo: cargo
-
-          - os: macos-15
-            target: aarch64-apple-darwin
-            variant: debug
-            v8_enable_pointer_compression: true
-            cargo: cargo
-
-          - os: macos-15
-            target: aarch64-apple-darwin
-            variant: release
-            v8_enable_pointer_compression: true
-            cargo: cargo
-
           - os: ${{ github.repository == 'denoland/rusty_v8' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}
             target: x86_64-unknown-linux-gnu
             variant: debug
@@ -130,34 +82,6 @@ jobs:
             cargo: cargo
 
           # simdutf builds
-          - os: macos-15-large
-            target: x86_64-apple-darwin
-            variant: debug
-            v8_enable_pointer_compression: false
-            simdutf: true
-            cargo: cargo
-
-          - os: macos-15-large
-            target: x86_64-apple-darwin
-            variant: release
-            v8_enable_pointer_compression: false
-            simdutf: true
-            cargo: cargo
-
-          - os: macos-15
-            target: aarch64-apple-darwin
-            variant: debug
-            v8_enable_pointer_compression: false
-            simdutf: true
-            cargo: cargo
-
-          - os: macos-15
-            target: aarch64-apple-darwin
-            variant: release
-            v8_enable_pointer_compression: false
-            simdutf: true
-            cargo: cargo
-
           - os: ${{ github.repository == 'denoland/rusty_v8' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}
             target: x86_64-unknown-linux-gnu
             variant: debug
