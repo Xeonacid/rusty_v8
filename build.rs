@@ -716,9 +716,6 @@ fn download_file(url: &str, filename: &Path) -> bool {
     if tmpfile.exists() {
       let _ = fs::remove_file(&tmpfile);
     }
-    eprintln!(
-      "Failed to download {url} using all available methods (Deno, Python, curl)."
-    );
     return false;
   }
   if !tmpfile.exists() {
