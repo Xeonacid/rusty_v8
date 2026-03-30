@@ -268,25 +268,14 @@ jobs:
           sudo apt update
           sudo apt install -yq --no-install-suggests --no-install-recommends \
             binfmt-support g++-10-riscv64-linux-gnu \
-            gcc-10-riscv64-linux-gnu libc6-riscv64-cross debootstrap qemu \
-            qemu-user qemu-user-binfmt
+            gcc-10-riscv64-linux-gnu libc6-riscv64-cross debootstrap qemu qemu-user \
+            qemu-user-binfmt
 
           sudo ln -s /usr/riscv64-linux-gnu/lib/ld-linux-riscv64-lp64d.so.1 \
                      /lib/ld-linux-riscv64-lp64d.so.1
 
-          # qemu-user supports only a single QEMU_LD_PREFIX value. Build one
-          # riscv64 runtime root with glibc + libgcc-s1 + musl via debootstrap,
-          # so it can run both cargo/nextest binaries and riscv64-musl sccache.
-          # Debian trixie provides musl on riscv64.
-          sudo debootstrap \
-            --arch=riscv64 \
-            --variant=minbase \
-            --include=libc6,libgcc-s1,musl \
-            trixie /opt/riscv64-linux-runtime \
-            https://deb.debian.org/debian
-
           echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/riscv64-linux-gnu-gcc-10" >> ${GITHUB_ENV}
-          echo "QEMU_LD_PREFIX=/opt/riscv64-linux-runtime" >> ${GITHUB_ENV}
+          echo "QEMU_LD_PREFIX=/usr/riscv64-linux-gnu" >> ${GITHUB_ENV}
 
       - name: Write git_submodule_status.txt
         run: git submodule status --recursive > git_submodule_status.txt
@@ -321,9 +310,8 @@ jobs:
                "aarch64-apple-darwin"      = "aarch64-apple-darwin"
                "x86_64-unknown-linux-gnu"  = "x86_64-unknown-linux-musl"
                "aarch64-unknown-linux-gnu" = "aarch64-unknown-linux-musl"
-               # Unlike aarch64, the riscv64 sccache binary is not static.
-               # ci installs a merged glibc+musl runtime root for qemu.
-               "riscv64gc-unknown-linux-gnu" = "riscv64gc-unknown-linux-musl"
+               # Unlike aarch64, the riscv64 sccache binary is not static, so use the host architecture one.
+               "riscv64gc-unknown-linux-gnu" = "x86_64-unknown-linux-musl"
                "x86_64-pc-windows-msvc"    = "x86_64-pc-windows-msvc"
              }['${{ matrix.config.target }}']
           $basename = "sccache-$version-$platform"
