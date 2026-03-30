@@ -274,28 +274,30 @@ jobs:
           sudo ln -s /usr/riscv64-linux-gnu/lib/ld-linux-riscv64-lp64d.so.1 \
                      /lib/ld-linux-riscv64-lp64d.so.1
 
-          # sccache v0.14.0 riscv64 archive is musl-dynamic, so provide a
-          # minimal musl runtime root for starting it with qemu-binfmt.
-          sudo mkdir -p /opt/riscv64-linux-musl/lib
+          # qemu-user supports only a single QEMU_LD_PREFIX value, so build
+          # one riscv64 runtime root that can run both:
+          # - glibc target binaries produced by cargo/nextest
+          # - riscv64-musl sccache binary
+          sudo mkdir -p /opt/riscv64-linux-runtime
+          sudo cp -a /usr/riscv64-linux-gnu/. /opt/riscv64-linux-runtime/
           curl -fsSL -o /tmp/musl-riscv64.apk \
             https://dl-cdn.alpinelinux.org/alpine/edge/main/riscv64/musl-1.2.6-r0.apk
           # Checksum from Alpine package file musl-1.2.6-r0.apk (edge/main/riscv64).
           # Update this value together with the pinned apk version in the URL.
           echo "6324b57cdf75bee5d7ffdf36b5cfe927c63c36162431fc675ab18a1fc44f49d7  /tmp/musl-riscv64.apk" | sha256sum -c -
-          sudo tar -xzf /tmp/musl-riscv64.apk -C /opt/riscv64-linux-musl
+          sudo tar -xzf /tmp/musl-riscv64.apk -C /opt/riscv64-linux-runtime
           curl -fsSL -o /tmp/libgcc-riscv64.apk \
             https://dl-cdn.alpinelinux.org/alpine/edge/main/riscv64/libgcc-15.2.0-r2.apk
           # Checksum from Alpine package file libgcc-15.2.0-r2.apk (edge/main/riscv64).
           # Update this value together with the pinned apk version in the URL.
           echo "1dd096a2c61e9b810c6988a3ec9a5d39b694cf832d6a86c217d3a2dc6454ef2a  /tmp/libgcc-riscv64.apk" | sha256sum -c -
-          sudo tar -xzf /tmp/libgcc-riscv64.apk -C /opt/riscv64-linux-musl
-          sudo ln -sf libc.musl-riscv64.so.1 /opt/riscv64-linux-musl/lib/libc.so
-          sudo cp /opt/riscv64-linux-musl/usr/lib/libgcc_s.so.1 \
-            /opt/riscv64-linux-musl/lib/libgcc_s.so.1
+          sudo tar -xzf /tmp/libgcc-riscv64.apk -C /opt/riscv64-linux-runtime
+          sudo ln -sf libc.musl-riscv64.so.1 /opt/riscv64-linux-runtime/lib/libc.so
+          sudo cp /opt/riscv64-linux-runtime/usr/lib/libgcc_s.so.1 \
+            /opt/riscv64-linux-runtime/lib/libgcc_s.so.1
 
           echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/riscv64-linux-gnu-gcc-10" >> ${GITHUB_ENV}
-          # Default to riscv64 glibc runtime for cargo/nextest target binaries.
-          echo "QEMU_LD_PREFIX=/usr/riscv64-linux-gnu" >> ${GITHUB_ENV}
+          echo "QEMU_LD_PREFIX=/opt/riscv64-linux-runtime" >> ${GITHUB_ENV}
 
       - name: Write git_submodule_status.txt
         run: git submodule status --recursive > git_submodule_status.txt
@@ -330,15 +332,11 @@ jobs:
                "aarch64-apple-darwin"      = "aarch64-apple-darwin"
                "x86_64-unknown-linux-gnu"  = "x86_64-unknown-linux-musl"
                "aarch64-unknown-linux-gnu" = "aarch64-unknown-linux-musl"
-               # Unlike aarch64, the riscv64 sccache binary is not static, so
-               # riscv64 jobs provide a musl runtime before start.
-                "riscv64gc-unknown-linux-gnu" = "riscv64gc-unknown-linux-musl"
-                "x86_64-pc-windows-msvc"    = "x86_64-pc-windows-msvc"
-              }['${{ matrix.config.target }}']
-          if ('${{ matrix.config.target }}' -eq 'riscv64gc-unknown-linux-gnu') {
-            # Use musl runtime only while launching riscv64-musl sccache.
-            $env:QEMU_LD_PREFIX = "/opt/riscv64-linux-musl"
-          }
+                # Unlike aarch64, the riscv64 sccache binary is not static.
+                # ci installs a merged glibc+musl runtime root for qemu.
+                 "riscv64gc-unknown-linux-gnu" = "riscv64gc-unknown-linux-musl"
+                 "x86_64-pc-windows-msvc"    = "x86_64-pc-windows-msvc"
+               }['${{ matrix.config.target }}']
           $basename = "sccache-$version-$platform"
           $url = "https://github.com/mozilla/sccache/releases/download/$version/$basename.tar.gz"
           cd ~
