@@ -120,7 +120,13 @@ fn main() {
 
   print_prebuilt_src_binding_path();
 
-  download_static_lib_binaries();
+  if !download_static_lib_binaries() {
+    println!(
+      "Prebuilt static library URL returned 404, falling back to V8_FROM_SOURCE."
+    );
+    build_v8(is_asan);
+    build_binding();
+  }
 }
 
 fn acquire_lock() -> LockFile {
@@ -717,7 +723,39 @@ fn download_file(url: &str, filename: &Path) {
   assert!(!tmpfile.exists());
 }
 
-fn download_static_lib_binaries() {
+fn is_http_status_404(status: &[u8]) -> bool {
+  std::str::from_utf8(status).is_ok_and(|s| s.trim() == "404")
+}
+
+fn static_lib_url_is_404(url: &str) -> bool {
+  if !url.starts_with("http:") && !url.starts_with("https:") {
+    return false;
+  }
+
+  let Some(curl) = which("curl").ok() else {
+    return false;
+  };
+
+  let null_device = if cfg!(windows) { "NUL" } else { "/dev/null" };
+  let output = Command::new(curl)
+    .arg("-I")
+    .arg("-L")
+    .arg("-s")
+    .arg("-o")
+    .arg(null_device)
+    .arg("-w")
+    .arg("%{http_code}")
+    .arg(url)
+    .output();
+
+  let Ok(output) = output else {
+    return false;
+  };
+
+  output.status.success() && is_http_status_404(&output.stdout)
+}
+
+fn download_static_lib_binaries() -> bool {
   let url = static_lib_url();
   println!("static lib URL: {url}");
 
@@ -725,7 +763,12 @@ fn download_static_lib_binaries() {
   fs::create_dir_all(&dir).unwrap();
   println!("cargo:rustc-link-search={}", dir.display());
 
+  if static_lib_url_is_404(&url) {
+    return false;
+  }
+
   download_file(&url, &static_lib_path());
+  true
 }
 
 fn decompress_to_writer<R, W>(input: &mut R, output: &mut W) -> io::Result<()>
@@ -1266,5 +1309,14 @@ edge [fontsize=10]
     assert!(files.contains("../../../example/src/input.txt"));
     assert!(files.contains("../../../example/src/count_bytes.py"));
     assert!(!files.contains("obj/hello/hello.o"));
+  }
+
+  #[test]
+  fn test_is_http_status_404() {
+    assert!(is_http_status_404(b"404"));
+    assert!(is_http_status_404(b"404\n"));
+    assert!(!is_http_status_404(b"200"));
+    assert!(!is_http_status_404(b""));
+    assert!(!is_http_status_404(b"not_a_status"));
   }
 }
