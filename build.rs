@@ -99,11 +99,21 @@ fn main() {
   // because we store everything in a parent directory of OUT_DIR.
   let _lockfile = acquire_lock();
 
-  // Build from source
-  if env_bool("V8_FROM_SOURCE") {
+  // Build from source directly, or fall back when prebuilt download fails.
+  let v8_from_source = env_bool("V8_FROM_SOURCE");
+  if v8_from_source || {
+    print_prebuilt_src_binding_path();
+    !download_static_lib_binaries()
+  } {
     if is_asan && env::var_os("OPT_LEVEL").unwrap_or_default() == "0" {
       panic!(
         "v8 crate cannot be compiled with OPT_LEVEL=0 and ASAN.\nTry `[profile.dev.package.v8] opt-level = 1`.\nAborting before miscompilations cause issues."
+      );
+    }
+
+    if !v8_from_source {
+      println!(
+        "Prebuilt static library download failed with deno/python/curl, falling back to V8_FROM_SOURCE."
       );
     }
 
@@ -116,16 +126,6 @@ fn main() {
     build_binding();
 
     return;
-  }
-
-  print_prebuilt_src_binding_path();
-
-  if !download_static_lib_binaries() {
-    println!(
-      "Prebuilt static library download failed with deno/python/curl, falling back to V8_FROM_SOURCE."
-    );
-    build_v8(is_asan);
-    build_binding();
   }
 }
 
@@ -678,22 +678,24 @@ fn download_file(url: &str, filename: &Path) -> bool {
   // Try downloading with python. Python is a V8 build dependency,
   // so this saves us from adding a Rust HTTP client dependency.
   let status = match status {
-    Some(status) => Some(status),
-    _ => {
+    deno_status @ Some(_) => deno_status,
+    None => {
       println!("Trying with Python...");
-      let python_status = Command::new(python())
+      let python_status_result = Command::new(python())
         .arg("./tools/download_file.py")
         .arg("--url")
         .arg(url)
         .arg("--filename")
         .arg(&tmpfile)
-        .status();
+        .status()
+        .ok()
+        .filter(|s| s.success());
 
       // Python is only a required dependency for `V8_FROM_SOURCE` builds.
       // If python is not available, try falling back to curl.
-      match python_status {
-        Ok(status) if status.success() => Some(status),
-        _ => {
+      match python_status_result {
+        python_status @ Some(_) => python_status,
+        None => {
           println!("Python downloader failed, trying with curl.");
           Command::new("curl")
             .arg("-L")
@@ -710,10 +712,13 @@ fn download_file(url: &str, filename: &Path) -> bool {
     }
   };
 
-  if status.is_none() || !tmpfile.exists() {
+  if status.is_none() {
     if tmpfile.exists() {
       let _ = fs::remove_file(&tmpfile);
     }
+    return false;
+  }
+  if !tmpfile.exists() {
     return false;
   }
 
