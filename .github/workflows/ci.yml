@@ -280,7 +280,6 @@ jobs:
           # Debian trixie provides musl on riscv64.
           sudo debootstrap \
             --arch=riscv64 \
-            --foreign \
             --variant=minbase \
             --include=libc6,libgcc-s1,musl \
             trixie /opt/riscv64-linux-runtime \
