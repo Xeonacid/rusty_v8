@@ -122,7 +122,7 @@ fn main() {
 
   if !download_static_lib_binaries() {
     println!(
-      "Prebuilt static library URL returned 404, falling back to V8_FROM_SOURCE."
+      "Prebuilt static library download failed with deno/python/curl, falling back to V8_FROM_SOURCE."
     );
     build_v8(is_asan);
     build_binding();
@@ -623,15 +623,15 @@ fn replace_non_alphanumeric(url: &str) -> String {
     .collect()
 }
 
-fn download_file(url: &str, filename: &Path) {
+fn download_file(url: &str, filename: &Path) -> bool {
   if !url.starts_with("http:") && !url.starts_with("https:") {
     copy_archive(url, filename);
-    return;
+    return true;
   }
 
   // Checksum (i.e: url) to avoid re-downloads
   match fs::read_to_string(static_checksum_path(filename)) {
-    Ok(c) if c == static_lib_url() => return,
+    Ok(c) if c == static_lib_url() => return true,
     _ => {}
   };
 
@@ -642,7 +642,7 @@ fn download_file(url: &str, filename: &Path) {
     println!("Looking for download in '{path:?}'");
     if path.exists() {
       copy_archive(&path.to_string_lossy(), filename);
-      return;
+      return true;
     }
   }
 
@@ -678,7 +678,7 @@ fn download_file(url: &str, filename: &Path) {
   // Try downloading with python. Python is a V8 build dependency,
   // so this saves us from adding a Rust HTTP client dependency.
   let status = match status {
-    Some(status) => status,
+    Some(status) => Some(status),
     _ => {
       println!("Trying with Python...");
       let python_status = Command::new(python())
@@ -692,7 +692,7 @@ fn download_file(url: &str, filename: &Path) {
       // Python is only a required dependency for `V8_FROM_SOURCE` builds.
       // If python is not available, try falling back to curl.
       match python_status {
-        Ok(status) if status.success() => status,
+        Ok(status) if status.success() => Some(status),
         _ => {
           println!("Python downloader failed, trying with curl.");
           Command::new("curl")
@@ -703,15 +703,19 @@ fn download_file(url: &str, filename: &Path) {
             .arg(&tmpfile)
             .arg(url)
             .status()
-            .unwrap()
+            .ok()
+            .filter(|s| s.success())
         }
       }
     }
   };
 
-  // Assert DL was successful
-  assert!(status.success());
-  assert!(tmpfile.exists());
+  if status.is_none() || !tmpfile.exists() {
+    if tmpfile.exists() {
+      let _ = fs::remove_file(&tmpfile);
+    }
+    return false;
+  }
 
   // Write checksum (i.e url) & move file
   fs::write(static_checksum_path(filename), url).unwrap();
@@ -721,38 +725,7 @@ fn download_file(url: &str, filename: &Path) {
   assert!(filename.exists());
   assert!(static_checksum_path(filename).exists());
   assert!(!tmpfile.exists());
-}
-
-fn is_http_status_404(status: &[u8]) -> bool {
-  std::str::from_utf8(status).is_ok_and(|s| s.trim() == "404")
-}
-
-fn static_lib_url_is_404(url: &str) -> bool {
-  if !url.starts_with("http:") && !url.starts_with("https:") {
-    return false;
-  }
-
-  let Some(curl) = which("curl").ok() else {
-    return false;
-  };
-
-  let null_device = if cfg!(windows) { "NUL" } else { "/dev/null" };
-  let output = Command::new(curl)
-    .arg("-I")
-    .arg("-L")
-    .arg("-s")
-    .arg("-o")
-    .arg(null_device)
-    .arg("-w")
-    .arg("%{http_code}")
-    .arg(url)
-    .output();
-
-  let Ok(output) = output else {
-    return false;
-  };
-
-  output.status.success() && is_http_status_404(&output.stdout)
+  true
 }
 
 fn download_static_lib_binaries() -> bool {
@@ -763,12 +736,7 @@ fn download_static_lib_binaries() -> bool {
   fs::create_dir_all(&dir).unwrap();
   println!("cargo:rustc-link-search={}", dir.display());
 
-  if static_lib_url_is_404(&url) {
-    return false;
-  }
-
-  download_file(&url, &static_lib_path());
-  true
+  download_file(&url, &static_lib_path())
 }
 
 fn decompress_to_writer<R, W>(input: &mut R, output: &mut W) -> io::Result<()>
@@ -909,7 +877,9 @@ fn print_prebuilt_src_binding_path() {
   if let Ok(base) = env::var("RUSTY_V8_MIRROR") {
     let version = env::var("CARGO_PKG_VERSION").unwrap();
     let url = format!("{base}/v{version}/{name}");
-    download_file(&url, &src_binding_path);
+    if !download_file(&url, &src_binding_path) {
+      panic!("Failed to download prebuilt src binding from {url}");
+    }
   }
 
   println!(
@@ -1309,14 +1279,5 @@ edge [fontsize=10]
     assert!(files.contains("../../../example/src/input.txt"));
     assert!(files.contains("../../../example/src/count_bytes.py"));
     assert!(!files.contains("obj/hello/hello.o"));
-  }
-
-  #[test]
-  fn test_is_http_status_404() {
-    assert!(is_http_status_404(b"404"));
-    assert!(is_http_status_404(b"404\n"));
-    assert!(!is_http_status_404(b"200"));
-    assert!(!is_http_status_404(b""));
-    assert!(!is_http_status_404(b"not_a_status"));
   }
 }
